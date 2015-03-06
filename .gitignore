@@ -1,2 +1,3 @@
 *.pyc
 app.db
+tracker/fedora_git/*

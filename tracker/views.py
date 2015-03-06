@@ -1,7 +1,11 @@
+import os
+import re
 from flask import jsonify
 from flask.ext.restful import abort, Api, Resource, reqparse
-from tracker import app, db
-from tracker.models import Package
+from tracker import app, db, q
+from tracker.models import Package, FedoraPackage, FedoraPatch
+from git import Repo
+
 
 api = Api(app)
 
@@ -45,13 +49,76 @@ class PackageListAPI(Resource):
 
     def post(self):
         args = self.reqparse.parse_args()
+        if Package.query.filter_by(name=args['name']).first():
+            data = {'id': None,
+                    'msg': 'Package with that name already exists'}
+            return jsonify(data=data), 400
+
         package = Package(args['name'], args['summary'])
 
         db.session.add(package)
         db.session.commit()
 
-        return package.id
+        package_id = package.id
 
+        job = q.enqueue_call(func=self.parse_fedora_patches,
+                             args=(package_id, args['name']),
+                             result_ttl=600000)
+
+        data = {'id': package.id, 'msg': 'Package Added'}
+        return jsonify(data=data)
+
+    def parse_fedora_patches(self, package_id, package_name):
+
+        repo_url = 'git://pkgs.fedoraproject.org/%s.git' % package_name
+
+        # Create fedora_git dir if it doesn't exist
+        fedora_git = os.path.join(app.config['BASEDIR'], 'tracker',
+                                  'fedora_git')
+
+        if not os.path.exists(fedora_git):
+            os.makedirs(fedora_git)
+
+        repo = Repo.clone_from(repo_url, os.path.join(fedora_git,
+                                                      package_name))
+        branches = []
+        for ref in repo.remotes.origin.refs:
+            match = re.match(r'origin\/(f[0-9]{2})', str(ref))
+
+            if match:
+                branches.append(ref)
+
+        for branch in branches:
+            # Checkout to this branch
+            repo.head.reference = branch
+
+            # save branch details in db
+            # TODO: Parse version from spec
+            fedora_package = FedoraPackage(package_id,
+                                           os.path.basename(str(branch)), '')
+
+            try:
+                db.session.add(fedora_package)
+                db.session.commit()
+                fedora_package_id = fedora_package.id
+            except:
+                return "Error adding FedoraPackage record"
+
+            tree = repo.head.commit.tree
+
+            for blob in tree.blobs:
+                if blob.name.endswith('.patch'):
+                    # read the patch
+                    fpatch = FedoraPatch(fedora_package_id,
+                                         blob.name, blob.data_stream.read())
+
+                    try:
+                        db.session.add(fpatch)
+                        db.session.commit()
+                    except Exception:
+                        return "Error adding FedoraPatch record"
+
+        return "done"
 
 api.add_resource(PackageAPI, '/api/packages/<int:id>')
 api.add_resource(PackageListAPI, '/api/packages')

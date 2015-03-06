@@ -1,3 +1,5 @@
 Flask==0.10.1
 Flask-RESTful==0.3.2
 Flask-SQLAlchemy==2.0
+redis==2.10.3
+rq==0.5.0
