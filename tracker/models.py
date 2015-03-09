@@ -8,10 +8,12 @@ class Package(db.Model):
     fedora_task_id = db.Column(db.Integer)
     fedora_packages = db.relationship('FedoraPackage', backref='package',
                                       lazy='dynamic')
+    queue_status = db.Column(db.String(50)) # DONE, QUEUED, ERROR
 
     def __init__(self, name, summary):
         self.name = name
         self.summary = summary
+        self.queue_status = "QUEUED"
 
     def __repr__(self):
         return '<Package %r>' % self.name

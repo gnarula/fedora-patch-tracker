@@ -1,6 +1,6 @@
 import os
 import re
-from flask import jsonify
+from flask import jsonify, render_template
 from flask.ext.restful import abort, Api, Resource, reqparse
 from tracker import app, db, q
 from tracker.models import Package, FedoraPackage, FedoraPatch
@@ -10,17 +10,34 @@ from git import Repo
 api = Api(app)
 
 
+@app.route('/')
+def index():
+    return render_template('layout.html')
+
+
 class PackageAPI(Resource):
     def get(self, id):
         package = Package.query.get(id)
         if package is None:
             abort(404)
 
-        package = {'id': package.id, 'name': package.name,
-                   'summary': package.summary,
-                   'fedora_task_id': package.fedora_task_id}
+        package_dict = {'id': package.id, 'name': package.name,
+                        'summary': package.summary,
+                        'fedora_task_id': package.fedora_task_id,
+                        'queue_status': package.queue_status}
 
-        return jsonify(package=package)
+        if package.queue_status == "DONE":
+            fpackage = {}
+
+            for fedora_package in package.fedora_packages:
+                patches = fedora_package.patches
+                fpackage[fedora_package.release] = {}
+                for patch in patches:
+                    fpackage[fedora_package.release][patch.name] = patch.content
+
+            package_dict['fedora_packages'] = fpackage
+
+        return jsonify(package=package_dict)
 
 
 class PackageListAPI(Resource):
@@ -70,6 +87,7 @@ class PackageListAPI(Resource):
 
     def parse_fedora_patches(self, package_id, package_name):
 
+        package = Package.query.get(package_id)
         repo_url = 'git://pkgs.fedoraproject.org/%s.git' % package_name
 
         # Create fedora_git dir if it doesn't exist
@@ -79,8 +97,15 @@ class PackageListAPI(Resource):
         if not os.path.exists(fedora_git):
             os.makedirs(fedora_git)
 
-        repo = Repo.clone_from(repo_url, os.path.join(fedora_git,
-                                                      package_name))
+        try:
+            repo = Repo.clone_from(repo_url, os.path.join(fedora_git,
+                                                          package_name))
+        except:
+            package.queue_status = "ERROR: Couldn't clone git repository"
+            db.session.add(package)
+            db.session.commit()
+            return "Couldn't clone git repository"
+
         branches = []
         for ref in repo.remotes.origin.refs:
             match = re.match(r'origin\/(f[0-9]{2})', str(ref))
@@ -118,6 +143,9 @@ class PackageListAPI(Resource):
                     except Exception:
                         return "Error adding FedoraPatch record"
 
+        package.queue_status = "DONE"
+        db.session.add(package)
+        db.session.commit()
         return "done"
 
 api.add_resource(PackageAPI, '/api/packages/<int:id>')

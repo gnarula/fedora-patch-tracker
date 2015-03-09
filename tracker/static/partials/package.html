@@ -1,0 +1,21 @@
+<div class="alert alert-warning" role="alert" ng-if="notFound">
+  <span class="strong">Not Found</span>
+  The package with the given id does not exist
+</div>
+
+<h3>{{ package.name }}</h3>
+<hr>
+<p><i>{{ package.summary }}</i></p>
+
+<div ng-if='package.queue_status == "DONE"'>
+  <accordion>
+  <accordion-group heading="{{ release }}" ng-if="nonEmpty(patches)" ng-repeat="(release, patches) in package.fedora_packages">
+    <div ng-repeat="(name, content) in patches">
+      <h4>{{ name }}</h4>
+      <hr>
+      <div hljs source="content">
+      </div>
+    </div>
+  </accordion-group>
+  </accordion>
+</div>
