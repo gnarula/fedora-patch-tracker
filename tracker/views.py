@@ -69,7 +69,9 @@ class PackageListAPI(Resource):
         if Package.query.filter_by(name=args['name']).first():
             data = {'id': None,
                     'msg': 'Package with that name already exists'}
-            return jsonify(data=data), 400
+            resp = jsonify(data=data)
+            resp.status_code = 400
+            return resp
 
         package = Package(args['name'], args['summary'])
 

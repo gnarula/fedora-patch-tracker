@@ -19,3 +19,15 @@
   </accordion-group>
   </accordion>
 </div>
+
+<div ng-if='package.queue_status == "QUEUED"'>
+  <div class="alert alert-warning" role="alert">
+    Please wait while we fetch the patches for this package. The page will update automatically once it's done. Hang on!
+  </div>
+</div>
+
+<div ng-if='package.queue_status != "QUEUED" && package.queue_status != "DONE"'>
+  <div class="alert alert-warning" role="alert">
+    {{ package.queue_status }}
+  </div>
+</div>

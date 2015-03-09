@@ -1,4 +1,25 @@
-<div class="alert alert-warning" role="alert" ng-if="emptyPackages">
-  <span class="strong">No Packages :(</span>
-  Please add some packages by clicking <a href="/#/packages/new">here</a>
+<div class="row">
+  <h3>Package List</h3>
+  <hr>
+  <div class="alert alert-warning" role="alert" ng-if="emptyPackages">
+    <span class="strong">No Packages :(</span>
+    Please add some packages by clicking <a href="/#/packages/create">here</a>
+  </div>
+
+  <div>
+    <table class="table">
+      <tr>
+        <th>Package Name</th>
+        <th>Package Summary</th>
+        <th>Queue Status</th>
+      </tr>
+      <tr ng-repeat="package in packages">
+        <td><a href="#/packages/{{ package.id }}">{{ package.name }}</a></td>
+        <td>{{ package.summary }}</td>
+        <td>{{ package.queue_status }} </td>
+      </tr>
+
+    </table>
+
+  </div>
 </div>

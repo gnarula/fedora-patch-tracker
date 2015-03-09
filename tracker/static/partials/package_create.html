@@ -1,0 +1,18 @@
+<div class="row">
+  <div ng-if="errorMessage" class="alert alert-warning">
+    {{ errorMessage }}
+  </div>
+  <div class="col-lg-6">
+    <form ng-submit="submit()">
+      <div class="form-group">
+        <label for="packageName">Package Name:</label>
+        <input type="text" ng-model="package.name" class="form-control" id="packageName" placeholder="Enter package name as in Fedora">
+      </div>
+      <div class="form-group">
+        <label for="summary">Summary</label>
+        <textarea class="form-control" ng-model="package.summary" id="summary"></textarea>
+      </div>
+      <button type="submit" class="btn btn-default">Submit</button>
+    </form>
+  </div>
+</div>
