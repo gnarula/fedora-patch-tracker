@@ -82,7 +82,8 @@ class PackageListAPI(Resource):
 
         job = q.enqueue_call(func=self.parse_fedora_patches,
                              args=(package_id, args['name']),
-                             result_ttl=600000)
+                             result_ttl=600000,
+                             timeout=600000)
 
         data = {'id': package.id, 'msg': 'Package Added'}
         return jsonify(data=data)
@@ -129,6 +130,9 @@ class PackageListAPI(Resource):
                 db.session.commit()
                 fedora_package_id = fedora_package.id
             except:
+                package.queue_status = "ERROR: Couldn't add FedoraPackage"
+                db.session.add(package)
+                db.session.commit()
                 return "Error adding FedoraPackage record"
 
             tree = repo.head.commit.tree
@@ -137,12 +141,16 @@ class PackageListAPI(Resource):
                 if blob.name.endswith('.patch'):
                     # read the patch
                     fpatch = FedoraPatch(fedora_package_id,
-                                         blob.name, blob.data_stream.read())
+                                         blob.name,
+                                         blob.data_stream.read().decode('utf-8', 'replace'))
 
                     try:
                         db.session.add(fpatch)
                         db.session.commit()
-                    except Exception:
+                    except Exception, e:
+                        package.queue_status = "ERROR: Couldn't add FedoraPatch"
+                        db.session.add(package)
+                        db.session.commit()
                         return "Error adding FedoraPatch record"
 
         package.queue_status = "DONE"
