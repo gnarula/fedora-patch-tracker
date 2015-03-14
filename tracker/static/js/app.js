@@ -42,6 +42,16 @@ packages.factory('Packages', function($http) {
   return factory;
 });
 
+packages.factory('FedoraPatches', function($http) {
+  var factory = {};
+
+  factory.getPatch = function(hexsha) {
+    return $http.get('/api/fedora_patches/' + hexsha);
+  };
+
+  return factory;
+});
+
 packages.controller('PackagesController', function($scope, Packages) {
   $scope.emptyPackages = false;
 
@@ -55,8 +65,10 @@ packages.controller('PackagesController', function($scope, Packages) {
     });
 });
 
-packages.controller('PackageController', function($scope, $routeParams, $timeout, Packages) {
+packages.controller('PackageController', function($scope, $routeParams, $timeout, Packages, FedoraPatches) {
   $scope.packageId = $routeParams.packageId;
+  $scope.patchInfo = {};
+
 
   $scope.nonEmpty = function(patches) {
     return !jQuery.isEmptyObject(patches)
@@ -74,17 +86,43 @@ packages.controller('PackageController', function($scope, $routeParams, $timeout
             if(data.package.queue_status == "DONE") {
               $timeout.cancel(timeout);
               $scope.package = data.package;
+              angular.forEach($scope.package.fedora_patches, function(patch, idx) {
+                $scope.$watch('package.fedora_patches[' + idx + ']', function(patch) {
+                  if(patch.open) {
+                    if(!(patch.hexsha in $scope.patchInfo)) {
+                      FedoraPatches.getPatch(patch.hexsha)
+                      .success(function(data, status) {
+                        $scope.patchInfo[patch.hexsha] = data.patch;
+                      });
+                    }
+                  }
+                }, true);
+              });
             }
             else if(data.package.queue_status.indexOf("ERROR") > -1) {
               $timeout.cancel(timeout);
               $scope.package = data.package;
             }
             else {
-              timeout = $timeout(poller, 10000);
+              timeout = $timeout(poller, 60000);
             }
           });
         };
         poller();
+      }
+      else if($scope.package.queue_status == "DONE") {
+        angular.forEach($scope.package.fedora_patches, function(patch, idx) {
+          $scope.$watch('package.fedora_patches[' + idx + ']', function(patch) {
+            if(patch.open) {
+              if(!(patch.hexsha in $scope.patchInfo)) {
+                FedoraPatches.getPatch(patch.hexsha)
+                .success(function(data, status) {
+                  $scope.patchInfo[patch.hexsha] = data.patch;
+                });
+              }
+            }
+          }, true);
+        });
       }
     })
     .error(function(data, status) {

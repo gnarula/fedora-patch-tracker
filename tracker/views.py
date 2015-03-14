@@ -1,5 +1,6 @@
 import os
 import re
+import subprocess
 from flask import jsonify, render_template
 from flask.ext.restful import abort, Api, Resource, reqparse
 from tracker import app, db, q
@@ -23,19 +24,17 @@ class PackageAPI(Resource):
 
         package_dict = {'id': package.id, 'name': package.name,
                         'summary': package.summary,
-                        'fedora_task_id': package.fedora_task_id,
                         'queue_status': package.queue_status}
 
         if package.queue_status == "DONE":
-            fpackage = {}
+            fpatches = []
 
-            for fedora_package in package.fedora_packages:
-                patches = fedora_package.patches
-                fpackage[fedora_package.release] = {}
-                for patch in patches:
-                    fpackage[fedora_package.release][patch.name] = patch.content
+            for patch in package.fedora_patches:
+                fpatches.append({'name': patch.name,
+                                 'hexsha': patch.hexsha,
+                                 'open': False})
 
-            package_dict['fedora_packages'] = fpackage
+            package_dict['fedora_patches'] = fpatches
 
         return jsonify(package=package_dict)
 
@@ -80,10 +79,10 @@ class PackageListAPI(Resource):
 
         package_id = package.id
 
-        job = q.enqueue_call(func=self.parse_fedora_patches,
-                             args=(package_id, args['name']),
-                             result_ttl=600000,
-                             timeout=600000)
+        q.enqueue_call(func=self.parse_fedora_patches,
+                       args=(package_id, args['name']),
+                       result_ttl=600000,
+                       timeout=600000)
 
         data = {'id': package.id, 'msg': 'Package Added'}
         return jsonify(data=data)
@@ -114,49 +113,94 @@ class PackageListAPI(Resource):
             match = re.match(r'origin\/(f[0-9]{2})', str(ref))
 
             if match:
-                branches.append(ref)
+                branches.append(match.group(0))
 
         for branch in branches:
             # Checkout to this branch
-            repo.head.reference = branch
+            repo.git.checkout(branch)
 
             # save branch details in db
             # TODO: Parse version from spec
-            fedora_package = FedoraPackage(package_id,
-                                           os.path.basename(str(branch)), '')
-
-            try:
-                db.session.add(fedora_package)
-                db.session.commit()
-                fedora_package_id = fedora_package.id
-            except:
-                package.queue_status = "ERROR: Couldn't add FedoraPackage"
-                db.session.add(package)
-                db.session.commit()
-                return "Error adding FedoraPackage record"
+            release = str(branch)[7:]
 
             tree = repo.head.commit.tree
 
             for blob in tree.blobs:
                 if blob.name.endswith('.patch'):
-                    # read the patch
-                    fpatch = FedoraPatch(fedora_package_id,
-                                         blob.name,
-                                         blob.data_stream.read().decode('utf-8', 'replace'))
+                    hexsha = blob.hexsha[:10]
+
+                    fpatch = FedoraPatch.query.filter_by(hexsha=hexsha,
+                                                         package_id=package_id).first()
+
+                    if fpatch is None:
+                        # diffstat = repo.git.apply('--stat', blob.name)
+                        command = ['diffstat', os.path.join(fedora_git,
+                                                            package_name,
+                                                            blob.name)]
+
+                        try:
+                            diffstat = subprocess.check_output(command)
+                        except Exception:
+                            diffstat = ""
+
+                        content = blob.data_stream.read().decode('utf-8', 'replace')
+                        if "\n---\n" in content:
+                            comments = content[:content.find("---\n")]
+                        elif "diff --git" in content:
+                            comments = content[:content.find("diff --git")]
+                        else:
+                            comments = ""
+
+                        fpatch = FedoraPatch(package_id, blob.name, hexsha,
+                                             diffstat, comments)
+
+                        try:
+                            db.session.add(fpatch)
+                            db.session.commit()
+                        except Exception:
+                            package.queue_status = "ERROR: Couldn't add FedoraPatch"
+                            db.session.add(package)
+                            db.session.commit()
+                            return "Error adding FedoraPatch record"
+
+                    # Add FedoraPackage
+                    fpackage = FedoraPackage(fpatch.id, release, "")
 
                     try:
-                        db.session.add(fpatch)
+                        db.session.add(fpackage)
                         db.session.commit()
-                    except Exception, e:
-                        package.queue_status = "ERROR: Couldn't add FedoraPatch"
+                    except Exception:
+                        package.queue_status = "ERROR: Couldn't add FedoraPackage"
                         db.session.add(package)
                         db.session.commit()
-                        return "Error adding FedoraPatch record"
+                        return "Error adding FedoraPackage record"
 
         package.queue_status = "DONE"
         db.session.add(package)
         db.session.commit()
         return "done"
 
+
+class FedoraPatchAPI(Resource):
+    def get(self, hexsha):
+        fpatch = FedoraPatch.query.filter_by(hexsha=hexsha).first()
+
+        if fpatch is None:
+            abort(404)
+
+        patch_dict = {'hexsha': hexsha, 'name': fpatch.name,
+                      'diffstat': fpatch.diffstat,
+                      'comments': fpatch.comments}
+
+        fpackages = FedoraPackage.query.filter_by(patch_id=fpatch.id)
+        releases = set()
+        for fpackage in fpackages:
+            releases.add(fpackage.release)
+
+        patch_dict['releases'] = list(releases)
+
+        return jsonify(patch=patch_dict)
+
 api.add_resource(PackageAPI, '/api/packages/<int:id>')
 api.add_resource(PackageListAPI, '/api/packages')
+api.add_resource(FedoraPatchAPI, '/api/fedora_patches/<string:hexsha>')

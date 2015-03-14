@@ -6,9 +6,9 @@ class Package(db.Model):
     name = db.Column(db.String(40))
     summary = db.Column(db.Text)
     fedora_task_id = db.Column(db.Integer)
-    fedora_packages = db.relationship('FedoraPackage', backref='package',
-                                      lazy='dynamic')
-    queue_status = db.Column(db.String(50)) # DONE, QUEUED, ERROR
+    fedora_patches = db.relationship('FedoraPatch', backref='package',
+                                     lazy='dynamic')
+    queue_status = db.Column(db.String(50))  # DONE, QUEUED, ERROR
 
     def __init__(self, name, summary):
         self.name = name
@@ -21,33 +21,36 @@ class Package(db.Model):
 
 class FedoraPackage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    package_id = db.Column(db.Integer, db.ForeignKey('package.id'))
     release = db.Column(db.String(5))
     version = db.Column(db.String(10))
-    patches = db.relationship('FedoraPatch', backref='fedora_package',
-                              lazy='dynamic')
+    patch_id = db.Column(db.Integer, db.ForeignKey('fedora_patch.id'))
 
-    def __init__(self, package_id, release, version):
-        self.package_id = package_id
+    def __init__(self, patch_id, release, version):
+        self.patch_id = patch_id
         self.release = release
         self.version = version
 
     def __repr__(self):
-        return '<FedoraPackage %r %r:%r>' % (self.package.name, self.release,
-                                             self.version)
+        return '<FedoraPackage %r:%r>' % (self.release, self.version)
 
 
 class FedoraPatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    fedora_package_id = db.Column(db.Integer,
-                                  db.ForeignKey('fedora_package.id'))
+    package_id = db.Column(db.Integer, db.ForeignKey('package.id'))
     name = db.Column(db.String(50))
-    content = db.Column(db.Text)
+    hexsha = db.Column(db.String(10), index=True)
+    diffstat = db.Column(db.Text)
+    comments = db.Column(db.Text)
+    fedora_packages = db.relationship('FedoraPackage',
+                                      backref='fedora_patch',
+                                      lazy='dynamic')
 
-    def __init__(self, fedora_package_id, name, content):
-        self.fedora_package_id = fedora_package_id
+    def __init__(self, package_id, name, hexsha, diffstat, comments):
+        self.package_id = package_id
         self.name = name
-        self.content = content
+        self.hexsha = hexsha
+        self.diffstat = diffstat
+        self.comments = comments
 
     def __repr__(self):
-        return '<Fedora Patch %r>' % self.name
+        return '<Fedora Patch %r-%r>' % (self.name, self.hexsha)

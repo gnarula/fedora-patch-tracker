@@ -8,14 +8,22 @@
 <p><i>{{ package.summary }}</i></p>
 
 <div ng-if='package.queue_status == "DONE"'>
-  <accordion>
-  <accordion-group heading="{{ release }}" ng-if="nonEmpty(patches)" ng-repeat="(release, patches) in package.fedora_packages">
-    <div ng-repeat="(name, content) in patches">
-      <h4>{{ name }}</h4>
-      <hr>
-      <div hljs source="content">
-      </div>
+  <accordion close-others="true">
+  <accordion-group heading="{{ patch.name }} - Blob ID: {{ patch.hexsha }}" ng-repeat="patch in package.fedora_patches" is-open="patch.open">
+    <h4>{{ patch.name }}</h4>
+    <hr>
+    <div ng-if="patchInfo[patch.hexsha].diffstat">
+      <h5>Diffstat</h5>
+      <div hljs source="patchInfo[patch.hexsha].diffstat" language="diff"></div>
     </div>
+
+    <div ng-if="patchInfo[patch.hexsha].comments">
+      <h5>Comments</h5>
+      <div hljs source="patchInfo[patch.hexsha].comments" language="diff"></div>
+    </div>
+
+    <h5>Releases</h5>
+    <a style="display: block;" ng-repeat="release in patchInfo[patch.hexsha].releases" href="http://pkgs.fedoraproject.org/cgit/{{ package.name}}.git/plain/{{ patch.name }}?h={{ release }}">{{ release }}</a>
   </accordion-group>
   </accordion>
 </div>
