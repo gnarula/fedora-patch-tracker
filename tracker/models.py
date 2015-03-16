@@ -37,7 +37,7 @@ class FedoraPackage(db.Model):
 class FedoraPatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     package_id = db.Column(db.Integer, db.ForeignKey('package.id'))
-    name = db.Column(db.String(50))
+    name = db.Column(db.String(100))
     hexsha = db.Column(db.String(10), index=True)
     diffstat = db.Column(db.Text)
     comments = db.Column(db.Text)
