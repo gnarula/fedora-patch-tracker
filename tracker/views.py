@@ -1,11 +1,11 @@
 import os
 import re
-import subprocess
 from flask import jsonify, render_template
 from flask.ext.restful import abort, Api, Resource, reqparse
 from tracker import app, db, q
 from tracker.models import Package, FedoraPackage, FedoraPatch
 from git import Repo
+from git.exc import GitCommandError
 
 
 api = Api(app)
@@ -133,14 +133,10 @@ class PackageListAPI(Resource):
                                                          package_id=package_id).first()
 
                     if fpatch is None:
-                        # diffstat = repo.git.apply('--stat', blob.name)
-                        command = ['diffstat', os.path.join(fedora_git,
-                                                            package_name,
-                                                            blob.name)]
 
                         try:
-                            diffstat = subprocess.check_output(command)
-                        except Exception:
+                            diffstat = repo.git.apply('--stat', blob.name)
+                        except GitCommandError:
                             diffstat = ""
 
                         content = blob.data_stream.read().decode('utf-8', 'replace')
